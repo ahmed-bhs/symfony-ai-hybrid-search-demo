@@ -2,6 +2,22 @@
 
 Demo showcasing **Symfony AI HybridStore** for PostgreSQL - combining semantic search, full-text search (BM25/native), and fuzzy matching via RRF.
 
+## Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│         Symfony AI HybridStore              │
+│                                             │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐     │
+│  │pgvector │  │BM25/FTS │  │ pg_trgm │     │
+│  │(vector) │  │ (text)  │  │ (fuzzy) │     │
+│  └────┬────┘  └────┬────┘  └────┬────┘     │
+│       └────────────┼────────────┘          │
+│                    ▼                        │
+│           RRF (Rank Fusion)                │
+└─────────────────────────────────────────────┘
+```
+
 ## Quick Start
 
 ```bash
