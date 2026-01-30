@@ -2,20 +2,24 @@
 
 namespace App\Service;
 
+use Psr\Log\LoggerInterface;
 use Symfony\AI\Store\Document\Metadata;
 use Symfony\AI\Store\Document\VectorDocument;
 use Symfony\AI\Store\Document\Vectorizer;
 use Symfony\AI\Store\StoreInterface;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\Uid\Uuid;
-use Psr\Log\LoggerInterface;
 
 class MovieSearchService
 {
     public function __construct(
-        private StoreInterface $store,
+        #[Autowire(service: 'ai.store.postgres.movies')]
+        private StoreInterface $bm25Store,
+        #[Autowire(service: 'ai.store.postgres.movies_native')]
+        private StoreInterface $nativeStore,
         private Vectorizer $vectorizer,
         private LoggerInterface $logger,
-        private TmdbEnricher $tmdbEnricher
+        private TmdbEnricher $tmdbEnricher,
     ) {
     }
 
@@ -51,7 +55,8 @@ class MovieSearchService
                 metadata: $metadata
             );
 
-            $this->store->add($document);
+            $this->bm25Store->add($document);
+            $this->nativeStore->add($document);
         } catch (\Exception $e) {
             $this->logger->error('Failed to add movie to store', [
                 'movie_id' => $id,
@@ -105,75 +110,15 @@ class MovieSearchService
         return implode("\n", $fields);
     }
 
-    public function search(string $query, int $limit = 20, array $boostFields = []): array
-    {
-        try {
-            $queryVector = $this->vectorizer->vectorize($query);
-
-            $options = [
-                'limit' => $limit,
-                'q' => $query,
-                'includeScoreBreakdown' => true
-            ];
-
-            if (!empty($boostFields)) {
-                $options['boostFields'] = $boostFields;
-            }
-
-            $results = $this->store->query($queryVector, $options);
-
-            $seen = [];
-            $deduplicated = [];
-
-            foreach ($results as $document) {
-                $metadata = $document->metadata;
-                $movieId = $metadata['movie_id'] ?? null;
-
-                if ($movieId && isset($seen[$movieId])) {
-                    continue;
-                }
-
-                $result = [
-                    'id' => $movieId,
-                    'title' => $metadata['title'] ?? '',
-                    'overview' => $metadata['overview'] ?? '',
-                    'genres' => $metadata['genres'] ?? [],
-                    'poster' => $metadata['poster'] ?? null,
-                    'release_date' => $metadata['release_date'] ?? null,
-                    'score' => $document->score,
-                ];
-
-                if (isset($metadata['_score_breakdown'])) {
-                    $result['score_breakdown'] = $metadata['_score_breakdown'];
-                }
-
-                if (isset($metadata['_applied_boosts'])) {
-                    $result['applied_boosts'] = $metadata['_applied_boosts'];
-                }
-
-                if ($movieId) {
-                    $seen[$movieId] = true;
-                }
-                $deduplicated[] = $result;
-            }
-
-            return $deduplicated;
-        } catch (\Exception $e) {
-            $this->logger->error('Search failed', [
-                'query' => $query,
-                'error' => $e->getMessage(),
-            ]);
-            throw $e;
-        }
-    }
-
     public function setup(int $vectorSize = 768): void
     {
-        $this->store->setup(['vector_size' => $vectorSize]);
+        $this->bm25Store->setup(['vector_size' => $vectorSize]);
+        $this->nativeStore->setup(['vector_size' => $vectorSize]);
     }
 
     public function drop(): void
     {
-        $this->store->drop();
+        $this->bm25Store->drop();
+        $this->nativeStore->drop();
     }
 }

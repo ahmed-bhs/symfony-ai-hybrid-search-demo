@@ -35,7 +35,7 @@ ai:
                 dsn: 'pgsql:host=localhost;dbname=hybrid_search'
                 username: 'postgres'
                 password: 'postgres'
-                table_name: 'movies'
+                table_name: 'movies_native'
                 vector_field: 'embedding'
                 distance: cosine
 
